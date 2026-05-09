@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AnimeHub - Stream & Discover</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: white;
+        }
+        
+        .header {
+            background: rgba(0,0,0,0.8);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo { font-size: 2rem; font-weight: bold; }
+        .search {
+            display: flex;
+            gap: 1rem;
+            flex: 1;
+            max-width: 500px;
+            margin: 0 2rem;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 25px;
+            font-size: 1rem;
+        }
+        
+        button {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 25px;
+            background: #ff6b6b;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        button:hover { background: #ff5252; transform: scale(1.05); }
+        
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+        }
+        
+        .genres {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .genre-btn {
+            background: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .genre-btn.active, .genre-btn:hover {
+            background: #ff6b6b;
+            transform: translateY(-2px);
+        }
+        
+        .anime-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .anime-card {
+            background: rgba(0,0,0,0.8);
+            border-radius: 15px;
+            overflow: hidden;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .anime-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+        }
+        
+        .anime-poster {
+            width: 100%;
+            height: 350px;
+            object-fit: cover;
+        }
+        
+        .anime-info {
+            padding: 1rem;
+        }
+        
+        .anime-title { 
+            font-size: 1.2rem; 
+            font-weight: bold; 
+            margin-bottom: 0.5rem;
+        }
+        
+        .anime-score {
+            color: #ffd700;
+            font-weight: bold;
+        }
+        
+        .loading { text-align: center; font-size: 1.2rem; margin: 2rem; }
+        .no-results { text-align: center; margin: 2rem; opacity: 0.7; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            max-width: 800px;
+            max-height: 90vh;
+            background: #1a1a1a;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        
+        .close { 
+            position: absolute; 
+            top: 20px; 
+            right: 30px; 
+            font-size: 2rem; 
+            cursor: pointer; 
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="logo">🎌 AnimeHub</div>
+        <div class="search">
+            <input type="text" id="searchInput" placeholder="Search anime... (e.g., Naruto)">
+            <button onclick="searchAnime()">🔍 Search</button>
+        </div>
+        <button onclick="loadTopAnime()">Top 50</button>
+    </header>
+
+    <div class="container">
+        <div class="genres">
+            <div class="genre-btn active" onclick="loadGenre('')">All</div>
+            <div class="genre-btn" onclick="loadGenre('Action')">Action</div>
+            <div class="genre-btn" onclick="loadGenre('Adventure')">Adventure</div>
+            <div class="genre-btn" onclick="loadGenre('Comedy')">Comedy</div>
+            <div class="genre-btn" onclick="loadGenre('Drama')">Drama</div>
+            <div class="genre-btn" onclick="loadGenre('Romance')">Romance</div>
+            <div class="genre-btn" onclick="loadGenre('Sci-Fi')">Sci-Fi</div>
+        </div>
+
+        <div id="animeGrid" class="anime-grid"></div>
+        <div id="loading" class="loading" style="display: none;">Loading anime...</div>
+        <div id="noResults" class="no-results" style="display: none;">No anime found 😢</div>
+    </div>
+
+    <!-- Modal for anime details -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let currentQuery = '';
+
+        // Load top anime on page load
+        window.onload = () => loadTopAnime();
+
+        async function fetchAnime(url) {
+            try {
+                showLoading(true);
+                const response = await fetch(url);
+                const data = await response.json();
+                return data.data || [];
+            } catch (error) {
+                console.error('API Error:', error);
+                return [];
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        async function loadTopAnime(page = 1) {
+            currentQuery = '';
+            currentPage = page;
+            const animeList = await fetchAnime(`https://api.jikan.moe/v4/top/anime?page=${page}&limit=24`);
+            displayAnime(animeList);
+        }
+
+        async function loadGenre(genre) {
+            currentQuery = '';
+            currentPage = 1;
+            const animeList = await fetchAnime(`https://api.jikan.moe/v4/anime?genres=${genre ? getGenreId(genre) : ''}&page=1&limit=24`);
+            displayAnime(animeList);
+            updateGenreButtons(genre);
+        }
+
+        async function searchAnime() {
+            const query = document.getElementById('searchInput').value.trim();
+            if (!query) return loadTopAnime();
+            
+            currentQuery = query;
+            currentPage = 1;
+            const animeList = await fetchAnime(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(query)}&page=1&limit=24`);
+            displayAnime(animeList);
+        }
+
+        function displayAnime(animeList) {
+            const grid = document.getElementById('animeGrid');
+            const noResults = document.getElementById('noResults');
+            
+            if (animeList.length === 0) {
+                grid.innerHTML = '';
+                noResults.style.display = 'block';
+                return;
+            }
+            
+            noResults.style.display = 'none';
+            grid.innerHTML = animeList.map(anime => `
+                <div class="anime-card" onclick="showAnimeDetails(${anime.mal_id})">
+                    <img class="anime-poster" src="${anime.images.jpg.image_url}" 
+                         alt="${anime.title}" 
+                         loading="lazy"
+                         onerror="this.src='https://via.placeholder.com/250x350/333/fff?text=No+Image'">
+                    <div class="anime-info">
+                        <div class="anime-title">${anime.title}</div>
+                        <div>${anime.year || 'N/A'}</div>
+                        <div class="anime-score">⭐ ${anime.score || 'N/A'}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function showAnimeDetails(id) {
+            const anime = await (await fetch(`https://api.jikan.moe/v4/anime/${id}/full`)).json();
+            const modal = document.getElementById('modal');
+            const modalBody = document.getElementById('modalBody');
+            
+            modalBody.innerHTML = `
+                <div style="display: flex; flex-direction: column; height: 100%;">
+                    <div style="flex: 1; padding: 2rem;">
+                        <h2 style="margin-bottom: 1rem;">${anime.data.title}</h2>
+                        <div style="display: flex; gap: 2rem;">
+                            <img src="${anime.data.images.jpg.large_image_url}" 
+                                 alt="${anime.data.title}" 
+                                 style="width: 300px; border-radius: 10px;">
+                            <div style="flex: 1;">
+                                <p><strong>Score:</strong> ⭐ ${anime.data.score}</p>
+                                <p><strong>Episodes:</strong> ${anime.data.episodes || 'N/A'}</p>
+                                <p><strong>Status:</strong> ${anime.data.status}</p>
+                                <p><strong>Genres:</strong> ${anime.data.genres.map(g => g.name).join(', ')}</p>
+                                <p style="margin-top: 1rem;">${anime.data.synopsis?.substring(0, 500)}...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="padding: 1rem; border-top: 1px solid #444; background: #2a2a2a;">
+                        <a href="${anime.data.url}" target="_blank" style="color: #ff6b6b; text-decoration: none; font-weight: bold;">
+                            View on MyAnimeList →
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'block' : 'none';
+        }
+
+        function updateGenreButtons(activeGenre) {
+            document.querySelectorAll('.genre-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.textContent === (activeGenre || 'All'));
+            });
+        }
+
+        // Simple genre ID mapping (extend as needed)
+        function getGenreId(genre) {
+            const genres = {
+                'Action': 1, 'Adventure': 2, 'Comedy': 4, 'Drama': 8,
+                'Romance': 22, 'Sci-Fi': 24
+            };
+            return genres[genre] || '';
+        }
+
+        // Close modal on outside click
+        window.onclick = (e) => {
+            if (e.target.id === 'modal') closeModal();
+        }
+
+        // Enter key search
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchAnime();
+        });
+    </script>
+</body>
+</html>
